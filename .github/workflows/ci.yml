@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [18.x, 20.x, 22.x]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libchromaprint-dev libsndfile1-dev
+
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install chromaprint libsndfile
+
+    - name: Install system dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        # For Windows, we'll rely on vcpkg or pre-built binaries
+        # This will need to be configured based on your Windows build setup
+        echo "Windows dependencies installation needed"
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build native addon
+      run: npm run build
+
+    - name: Run tests
+      run: npm test
+
+    - name: Run lint (if available)
+      run: npm run lint || echo "No lint script available"
+      continue-on-error: true
+
+  prebuild:
+    needs: test
+    runs-on: ${{ matrix.os }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [20.x]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libchromaprint-dev libsndfile1-dev
+
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install chromaprint libsndfile
+
+    - name: Install system dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        echo "Windows dependencies installation needed"
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Create prebuilds
+      run: npm run prebuild
+
+    - name: Upload prebuilds
+      uses: actions/upload-artifact@v4
+      with:
+        name: prebuilds-${{ matrix.os }}
+        path: prebuilds/
+        retention-days: 30

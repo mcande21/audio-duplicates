@@ -1,0 +1,71 @@
+{
+  "name": "audio-duplicates",
+  "version": "1.0.4",
+  "description": "Fast audio duplicate detection using Chromaprint fingerprinting",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "bin": {
+    "audio-duplicates": "./cli/audio-duplicates.js"
+  },
+  "scripts": {
+    "build": "node-gyp rebuild",
+    "clean": "node-gyp clean",
+    "configure": "node-gyp configure",
+    "install": "prebuild-install || npm run build",
+    "test": "node test/test.js"
+  },
+  "keywords": [
+    "audio",
+    "duplicate-detection",
+    "chromaprint",
+    "fingerprinting",
+    "music",
+    "deduplication",
+    "node-addon-api",
+    "napi",
+    "c++",
+    "native"
+  ],
+  "author": {
+    "name": "Cooper Anderson",
+    "email": "cooper@example.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/cooperanderson/audio-duplicates#readme",
+  "bugs": {
+    "url": "https://github.com/cooperanderson/audio-duplicates/issues"
+  },
+  "gypfile": true,
+  "dependencies": {
+    "node-addon-api": "^7.0.0",
+    "node-gyp-build": "^4.8.0",
+    "commander": "^11.0.0",
+    "cli-progress": "^3.12.0",
+    "chalk": "^4.1.2",
+    "prebuild-install": "^7.1.1"
+  },
+  "devDependencies": {
+    "node-gyp": "^10.0.0",
+    "prebuildify": "^6.0.0",
+    "mocha": "^10.2.0",
+    "chai": "^4.3.7"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cooperanderson/audio-duplicates.git"
+  },
+  "files": [
+    "lib/",
+    "src/",
+    "cli/",
+    "examples/",
+    "binding.gyp",
+    "prebuilds/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ]
+}

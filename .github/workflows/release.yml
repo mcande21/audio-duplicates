@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  prebuild:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [20.x]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libchromaprint-dev libsndfile1-dev
+
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install chromaprint libsndfile
+
+    - name: Install system dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        echo "Windows dependencies installation needed"
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build and create prebuilds
+      run: npm run prebuild
+
+    - name: Upload prebuilds
+      uses: actions/upload-artifact@v4
+      with:
+        name: prebuilds-${{ matrix.os }}
+        path: prebuilds/
+        retention-days: 90
+
+  publish:
+    needs: prebuild
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        registry-url: 'https://registry.npmjs.org'
+        cache: 'npm'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libchromaprint-dev libsndfile1-dev
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Download all prebuilds
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+
+    - name: Combine prebuilds
+      run: |
+        mkdir -p prebuilds
+        cp -r ./artifacts/prebuilds-*/prebuilds/* prebuilds/ || true
+
+    - name: Run tests
+      run: npm test
+
+    - name: Publish to NPM
+      run: npm publish
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false

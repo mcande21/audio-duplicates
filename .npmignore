@@ -1,0 +1,57 @@
+# Development files
+test_A/
+test_B/
+test_scenarios/
+test_48k_padded/
+test_96k_padded/
+*.js
+!cli/
+!examples/
+!lib/
+.claude/
+.github/instructions/
+
+# Build artifacts (keep prebuilds/)
+build/
+.node-gyp/
+
+# Development documentation
+CLAUDE.md
+PREPROCESSING_RESULTS.md
+SILENCE_PADDING_SOLUTIONS.md
+SMART_DOUBLING_IMPLEMENTATION.md
+
+# Editor files
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+logs/
+
+# Development dependencies already excluded by npm defaults:
+# node_modules/ (automatically excluded)
+# package-lock.json (automatically excluded in published packages)
+
+# Keep these important files:
+# package.json (automatically included)
+# README.md (in files array)
+# LICENSE (in files array)
+# src/ (in files array)
+# lib/ (in files array)
+# cli/ (in files array)
+# examples/ (in files array)
+# binding.gyp (in files array)
+# prebuilds/ (in files array)
