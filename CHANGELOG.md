@@ -62,5 +62,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Performance benchmarks and algorithm details
 - Troubleshooting guide for common issues
 
-[Unreleased]: https://github.com/cooperanderson/audio-duplicates/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/cooperanderson/audio-duplicates/releases/tag/v1.0.0
+[Unreleased]: https://github.com/mcande21/audio-duplicates/compare/v1.0.4...HEAD
+[1.0.4]: https://github.com/mcande21/audio-duplicates/releases/tag/v1.0.4

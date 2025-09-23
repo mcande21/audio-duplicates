@@ -31,9 +31,9 @@
     "email": "cooper@example.com"
   },
   "license": "MIT",
-  "homepage": "https://github.com/cooperanderson/audio-duplicates#readme",
+  "homepage": "https://github.com/mcande21/audio-duplicates#readme",
   "bugs": {
-    "url": "https://github.com/cooperanderson/audio-duplicates/issues"
+    "url": "https://github.com/mcande21/audio-duplicates/issues"
   },
   "gypfile": true,
   "dependencies": {
@@ -55,7 +55,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/cooperanderson/audio-duplicates.git"
+    "url": "https://github.com/mcande21/audio-duplicates.git"
   },
   "files": [
     "lib/",

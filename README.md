@@ -2,7 +2,7 @@
 
 [![npm version](https://badge.fury.io/js/audio-duplicates.svg)](https://badge.fury.io/js/audio-duplicates)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js CI](https://github.com/cooperanderson/audio-duplicates/workflows/CI/badge.svg)](https://github.com/cooperanderson/audio-duplicates/actions)
+[![Node.js CI](https://github.com/mcande21/audio-duplicates/workflows/CI/badge.svg)](https://github.com/mcande21/audio-duplicates/actions)
 [![npm downloads](https://img.shields.io/npm/dm/audio-duplicates.svg)](https://www.npmjs.com/package/audio-duplicates)
 
 A high-performance audio duplicate detection library built with native C++ and Chromaprint fingerprinting technology. Quickly find duplicate audio files across large collections with robust detection that handles different encodings, bitrates, and formats.
@@ -469,7 +469,7 @@ For large collections:
 ### Development Setup
 
 ```bash
-git clone https://github.com/cooperanderson/audio-duplicates.git
+git clone https://github.com/mcande21/audio-duplicates.git
 cd audio-duplicates
 npm install
 npm run build
