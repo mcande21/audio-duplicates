@@ -5,6 +5,9 @@
 #include <unordered_set>
 #include <string>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
+#include <omp.h>
 #include "chromaprint_wrapper.h"
 #include "fingerprint_comparator.h"
 
@@ -40,6 +43,9 @@ public:
     // Add a file and its fingerprint to the index
     size_t add_file(const std::string& file_path, std::unique_ptr<Fingerprint> fingerprint);
 
+    // Add multiple files in parallel (thread-safe)
+    std::vector<size_t> add_files_batch(std::vector<std::pair<std::string, std::unique_ptr<Fingerprint>>>& files);
+
     // Find potential duplicates for a given file ID
     std::vector<size_t> find_candidates(size_t file_id) const;
 
@@ -48,6 +54,9 @@ public:
 
     // Get all duplicate groups
     std::vector<DuplicateGroup> find_all_duplicates();
+
+    // Find all duplicate groups in parallel
+    std::vector<DuplicateGroup> find_all_duplicates_parallel(size_t num_threads = 0);
 
     // Get file information
     const FileEntry* get_file(size_t file_id) const;
@@ -78,6 +87,10 @@ private:
 
     // Fingerprint comparator
     std::unique_ptr<FingerprintComparator> comparator_;
+
+    // Thread synchronization
+    mutable std::shared_mutex index_mutex_;
+    mutable std::mutex files_mutex_;
 
     // Configuration
     size_t hash_threshold_;

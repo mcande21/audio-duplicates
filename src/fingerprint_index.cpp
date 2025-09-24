@@ -1,6 +1,7 @@
 #include "fingerprint_index.h"
 #include <algorithm>
 #include <unordered_map>
+#include <shared_mutex>
 
 namespace AudioDuplicates {
 
@@ -17,6 +18,9 @@ size_t FingerprintIndex::add_file(const std::string& file_path, std::unique_ptr<
         throw std::invalid_argument("Invalid fingerprint provided");
     }
 
+    std::unique_lock<std::mutex> files_lock(files_mutex_);
+    std::unique_lock<std::shared_mutex> index_lock(index_mutex_);
+
     // Create file entry
     auto file_entry = std::make_unique<FileEntry>(file_path, std::move(fingerprint));
     size_t file_id = files_.size();
@@ -30,7 +34,37 @@ size_t FingerprintIndex::add_file(const std::string& file_path, std::unique_ptr<
     return file_id;
 }
 
+std::vector<size_t> FingerprintIndex::add_files_batch(std::vector<std::pair<std::string, std::unique_ptr<Fingerprint>>>& files) {
+    std::vector<size_t> file_ids;
+    file_ids.reserve(files.size());
+
+    std::unique_lock<std::mutex> files_lock(files_mutex_);
+    std::unique_lock<std::shared_mutex> index_lock(index_mutex_);
+
+    for (auto& file_data : files) {
+        if (!file_data.second || file_data.second->data.empty()) {
+            throw std::invalid_argument("Invalid fingerprint provided");
+        }
+
+        // Create file entry
+        auto file_entry = std::make_unique<FileEntry>(file_data.first, std::move(file_data.second));
+        size_t file_id = files_.size();
+
+        // Build hash index for this file
+        build_hash_index(file_id, *file_entry->fingerprint);
+
+        // Store file entry
+        files_.push_back(std::move(file_entry));
+        file_ids.push_back(file_id);
+    }
+
+    return file_ids;
+}
+
 std::vector<size_t> FingerprintIndex::find_candidates(size_t file_id) const {
+    std::shared_lock<std::shared_mutex> index_lock(index_mutex_);
+    std::unique_lock<std::mutex> files_lock(files_mutex_);
+
     if (file_id >= files_.size()) {
         return {};
     }
@@ -44,6 +78,8 @@ std::vector<size_t> FingerprintIndex::find_candidates(size_t file_id) const {
 }
 
 std::vector<size_t> FingerprintIndex::find_candidates(const Fingerprint& fingerprint) const {
+    std::shared_lock<std::shared_mutex> index_lock(index_mutex_);
+
     std::unordered_map<size_t, size_t> candidate_counts;
 
     // Extract hashes from query fingerprint
@@ -259,6 +295,90 @@ std::vector<DuplicateGroup> FingerprintIndex::merge_duplicate_groups(const std::
               });
 
     return final_groups;
+}
+
+std::vector<DuplicateGroup> FingerprintIndex::find_all_duplicates_parallel(size_t num_threads) {
+    if (num_threads > 0) {
+        omp_set_num_threads(static_cast<int>(num_threads));
+    }
+
+    if (files_.empty()) {
+        return {};
+    }
+
+    std::vector<std::unordered_set<size_t>> raw_groups;
+    std::vector<bool> processed(files_.size(), false);
+    std::mutex groups_mutex;
+    std::mutex processed_mutex;
+
+    // Process files in parallel using OpenMP
+    #pragma omp parallel
+    {
+        std::vector<std::unordered_set<size_t>> thread_groups;
+
+        #pragma omp for schedule(dynamic)
+        for (size_t file_id = 0; file_id < files_.size(); ++file_id) {
+            bool skip = false;
+
+            // Check if already processed
+            {
+                std::lock_guard<std::mutex> lock(processed_mutex);
+                if (processed[file_id] || !files_[file_id]) {
+                    skip = true;
+                }
+            }
+
+            if (skip) continue;
+
+            const auto& query_fingerprint = *files_[file_id]->fingerprint;
+            auto candidates = find_candidates(query_fingerprint);
+
+            std::unordered_set<size_t> duplicate_group;
+            duplicate_group.insert(file_id);
+
+            // Compare with each candidate
+            for (size_t candidate_id : candidates) {
+                if (candidate_id != file_id && candidate_id < files_.size() && files_[candidate_id]) {
+                    bool candidate_processed = false;
+                    {
+                        std::lock_guard<std::mutex> lock(processed_mutex);
+                        candidate_processed = processed[candidate_id];
+                    }
+
+                    if (!candidate_processed) {
+                        auto match_result = comparator_->compare(query_fingerprint, *files_[candidate_id]->fingerprint);
+
+                        if (match_result.is_duplicate) {
+                            duplicate_group.insert(candidate_id);
+                        }
+                    }
+                }
+            }
+
+            // Only create group if we found duplicates
+            if (duplicate_group.size() > 1) {
+                thread_groups.push_back(duplicate_group);
+
+                // Mark all files in this group as processed
+                std::lock_guard<std::mutex> lock(processed_mutex);
+                for (size_t id : duplicate_group) {
+                    processed[id] = true;
+                }
+            } else {
+                std::lock_guard<std::mutex> lock(processed_mutex);
+                processed[file_id] = true;
+            }
+        }
+
+        // Merge thread-local groups into global groups
+        if (!thread_groups.empty()) {
+            std::lock_guard<std::mutex> lock(groups_mutex);
+            raw_groups.insert(raw_groups.end(), thread_groups.begin(), thread_groups.end());
+        }
+    }
+
+    // Merge overlapping groups and convert to final format
+    return merge_duplicate_groups(raw_groups);
 }
 
 }

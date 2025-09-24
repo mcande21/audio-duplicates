@@ -461,6 +461,112 @@ Value ClearIndex(const CallbackInfo& info) {
     return Boolean::New(env, true);
 }
 
+// Generate fingerprints for multiple files in parallel using OpenMP
+Value GenerateFingerprintsBatch(const CallbackInfo& info) {
+    Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsArray()) {
+        TypeError::New(env, "First argument must be an array of file paths").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    Array filePaths = info[0].As<Array>();
+    uint32_t maxDuration = 0;
+
+    if (info.Length() > 1 && info[1].IsNumber()) {
+        maxDuration = info[1].As<Number>().Uint32Value();
+    }
+
+    try {
+        Array results = Array::New(env, filePaths.Length());
+
+        // Convert JS array to vector for OpenMP processing
+        std::vector<std::string> paths;
+        paths.reserve(filePaths.Length());
+        for (uint32_t i = 0; i < filePaths.Length(); ++i) {
+            paths.push_back(filePaths.Get(i).As<String>().Utf8Value());
+        }
+
+        // Process files in parallel using OpenMP
+        #pragma omp parallel for
+        for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+            try {
+                ChromaprintWrapper wrapper;
+                auto fingerprint = maxDuration > 0
+                    ? wrapper.generate_fingerprint_limited(paths[i], maxDuration)
+                    : wrapper.generate_fingerprint(paths[i]);
+
+                #pragma omp critical
+                {
+                    results[i] = FingerprintToJS(env, *fingerprint);
+                }
+            } catch (const std::exception& e) {
+                #pragma omp critical
+                {
+                    Object errorObj = Object::New(env);
+                    errorObj.Set("error", String::New(env, e.what()));
+                    errorObj.Set("filePath", String::New(env, paths[i]));
+                    results[i] = errorObj;
+                }
+            }
+        }
+
+        return results;
+    } catch (const std::exception& e) {
+        Error::New(env, e.what()).ThrowAsJavaScriptException();
+        return env.Null();
+    }
+}
+
+// Find all duplicates using parallel processing
+Value FindAllDuplicatesParallel(const CallbackInfo& info) {
+    Env env = info.Env();
+
+    if (!g_index) {
+        Error::New(env, "Index not initialized").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    size_t numThreads = 0;
+    if (info.Length() > 0 && info[0].IsNumber()) {
+        numThreads = info[0].As<Number>().Uint32Value();
+    }
+
+    try {
+        auto duplicateGroups = g_index->find_all_duplicates_parallel(numThreads);
+
+        Array jsDuplicateGroups = Array::New(env, duplicateGroups.size());
+
+        for (size_t i = 0; i < duplicateGroups.size(); ++i) {
+            const auto& group = duplicateGroups[i];
+
+            Object jsGroup = Object::New(env);
+            Array jsFileIds = Array::New(env, group.file_ids.size());
+            Array jsFilePaths = Array::New(env, group.file_ids.size());
+
+            for (size_t j = 0; j < group.file_ids.size(); ++j) {
+                jsFileIds[j] = Number::New(env, group.file_ids[j]);
+
+                const auto* file_entry = g_index->get_file(group.file_ids[j]);
+                if (file_entry) {
+                    jsFilePaths[j] = String::New(env, file_entry->file_path);
+                }
+            }
+
+            jsGroup.Set("fileIds", jsFileIds);
+            jsGroup.Set("filePaths", jsFilePaths);
+            jsGroup.Set("avgSimilarity", Number::New(env, group.avg_similarity));
+
+            jsDuplicateGroups[i] = jsGroup;
+        }
+
+        return jsDuplicateGroups;
+    } catch (const std::exception& e) {
+        Error::New(env, e.what()).ThrowAsJavaScriptException();
+        return env.Null();
+    }
+}
+
 // Initialize the module and export functions
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Core fingerprinting functions
@@ -476,6 +582,10 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("findAllDuplicates", Function::New(env, FindAllDuplicates));
     exports.Set("getIndexStats", Function::New(env, GetIndexStats));
     exports.Set("clearIndex", Function::New(env, ClearIndex));
+
+    // Parallel processing functions
+    exports.Set("generateFingerprintsBatch", Function::New(env, GenerateFingerprintsBatch));
+    exports.Set("findAllDuplicatesParallel", Function::New(env, FindAllDuplicatesParallel));
 
     // Configuration functions
     exports.Set("setSimilarityThreshold", Function::New(env, SetSimilarityThreshold));

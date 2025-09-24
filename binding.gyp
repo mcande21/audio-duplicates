@@ -4,6 +4,8 @@
       "target_name": "addon",
       "cflags!": [ "-fno-exceptions" ],
       "cflags_cc!": [ "-fno-exceptions" ],
+      "cflags": [ "-fopenmp" ],
+      "cflags_cc": [ "-fopenmp" ],
       "sources": [
         "src/main.cpp",
         "src/chromaprint_wrapper.cpp",
@@ -37,6 +39,7 @@
         ["OS=='mac'", {
           "cflags+": ["-fvisibility=hidden"],
           "cflags_cc!": ["-fno-exceptions"],
+          "cflags_cc+": ["-fopenmp"],
           "libraries": [
             "-framework Accelerate"
           ],
@@ -47,16 +50,19 @@
             "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
             "OTHER_CPLUSPLUSFLAGS": [
               "-I/opt/homebrew/include",
-              "-I/usr/local/include"
+              "-I/usr/local/include",
+              "-I/opt/homebrew/opt/libomp/include"
             ],
             "OTHER_LDFLAGS": [
               "-L/opt/homebrew/lib",
-              "-L/usr/local/lib"
+              "-L/usr/local/lib",
+              "-L/opt/homebrew/opt/libomp/lib",
+              "-lomp"
             ]
           }
         }],
         ["OS=='linux'", {
-          "cflags_cc": ["-std=c++17"],
+          "cflags_cc": ["-std=c++17", "-fopenmp"],
           "cflags": [
             "<!@(pkg-config --cflags libchromaprint sndfile)"
           ],

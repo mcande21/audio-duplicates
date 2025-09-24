@@ -18,7 +18,8 @@ program
 program
   .option('-v, --verbose', 'verbose output')
   .option('--threshold <number>', 'similarity threshold (0.0-1.0)', parseFloat, 0.85)
-  .option('--format <format>', 'output format (json|csv|text)', 'text');
+  .option('--format <format>', 'output format (json|csv|text)', 'text')
+  .option('-j, --threads <number>', 'number of threads for parallel processing (0=auto)', parseInt, 0);
 
 // Scan command
 program
@@ -28,6 +29,8 @@ program
   .option('--max-duration <seconds>', 'maximum duration to fingerprint (seconds)', parseInt)
   .option('--output <file>', 'output file path')
   .option('--no-progress', 'disable progress bar')
+  .option('--parallel', 'use parallel processing for faster scanning')
+  .option('--extensions <extensions>', 'file extensions to scan (comma-separated, default: wav)', 'wav')
   .action(async (directories, options) => {
     try {
       await scanCommand(directories, options);
@@ -91,6 +94,10 @@ async function scanCommand(directories, options) {
   console.log(chalk.blue('🎵 Audio Duplicate Scanner'));
   console.log(chalk.gray(`Scanning: ${directoryList.join(', ')}`));
   console.log(chalk.gray(`Threshold: ${globalOpts.threshold}`));
+  if (options.parallel) {
+    const threads = globalOpts.threads || require('os').cpus().length;
+    console.log(chalk.gray(`Parallel Mode: ${threads} threads`));
+  }
   console.log();
 
   // Progress bar
@@ -104,12 +111,54 @@ async function scanCommand(directories, options) {
     });
   }
 
+  // Parse extensions from CLI option
+  const extensions = options.extensions
+    .split(',')
+    .map(ext => ext.trim().startsWith('.') ? ext.trim() : '.' + ext.trim());
+
+  console.log(chalk.gray(`Extensions: ${extensions.join(', ')}`));
+
   const scanOptions = {
     threshold: globalOpts.threshold,
+    extensions: extensions,
+    concurrency: globalOpts.threads || require('os').cpus().length,
     onProgress: (progress) => {
-      if (progressBar) {
+      if (progress.phase === 'discovery_start') {
+        console.log(chalk.cyan('📁 Discovering audio files...'));
+      } else if (progress.phase === 'discovery') {
+        // Update discovery progress (overwrite previous line)
+        process.stdout.write(`\r📁 Scanned ${chalk.cyan(progress.scannedFiles.toLocaleString())} files, found ${chalk.green(progress.audioFiles.toLocaleString())} audio files... (${progress.currentPath})`);
+      } else if (progress.phase === 'discovery_complete') {
+        // Clear the line and show final discovery results
+        process.stdout.write('\r' + ' '.repeat(100) + '\r'); // Clear line
+        console.log(`✅ ${chalk.green(progress.message)}`);
+        console.log();
+
+        // Initialize progress bar with correct total
+        if (progressBar && progress.audioFiles > 0) {
+          progressBar.start(progress.audioFiles, 0, {
+            filename: 'Starting fingerprint analysis...'
+          });
+        }
+      } else if (progress.phase === 'processing' && progressBar) {
+        // During fingerprinting phase
+        const filename = path.basename(progress.file);
+        const extra = progress.parallel ? ` [${progress.concurrency} threads]` : '';
         progressBar.update(progress.current, {
-          filename: path.basename(progress.file)
+          filename: filename + extra
+        });
+      } else if (progress.phase === 'duplicate_detection') {
+        // During duplicate detection phase
+        if (progressBar) {
+          progressBar.stop();
+        }
+        console.log();
+        console.log(chalk.yellow('🔍 ' + progress.message));
+      } else if (progress.current && progressBar && !progress.phase) {
+        // Fallback for any other progress updates
+        const filename = progress.file ? path.basename(progress.file) : 'Processing...';
+        progressBar.update(progress.current, {
+          filename: filename
         });
       }
     }
@@ -117,15 +166,27 @@ async function scanCommand(directories, options) {
 
   console.log(chalk.yellow('🔍 Scanning for audio files...'));
 
-  if (progressBar) {
-    progressBar.start(100, 0, { filename: 'Starting...' });
-  }
-
   let duplicateGroups;
-  if (directoryList.length === 1) {
-    duplicateGroups = await audioDuplicates.scanDirectoryForDuplicates(directoryList[0], scanOptions);
+  if (options.parallel) {
+    // Use parallel scanning for better performance
+    if (directoryList.length === 1) {
+      duplicateGroups = await audioDuplicates.scanDirectoryForDuplicatesParallel(directoryList[0], scanOptions);
+    } else {
+      // For multiple directories in parallel mode, scan each one and combine results
+      const allGroups = [];
+      for (const directory of directoryList) {
+        const groups = await audioDuplicates.scanDirectoryForDuplicatesParallel(directory, scanOptions);
+        allGroups.push(...groups);
+      }
+      duplicateGroups = allGroups;
+    }
   } else {
-    duplicateGroups = await audioDuplicates.scanMultipleDirectoriesForDuplicates(directoryList, scanOptions);
+    // Use sequential scanning
+    if (directoryList.length === 1) {
+      duplicateGroups = await audioDuplicates.scanDirectoryForDuplicates(directoryList[0], scanOptions);
+    } else {
+      duplicateGroups = await audioDuplicates.scanMultipleDirectoriesForDuplicates(directoryList, scanOptions);
+    }
   }
 
   if (progressBar) {
