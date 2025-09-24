@@ -12,7 +12,7 @@ const program = new Command();
 program
   .name('audio-duplicates')
   .description('Fast audio duplicate detection using Chromaprint fingerprinting')
-  .version('1.0.4');
+  .version('1.0.5');
 
 // Global options
 program

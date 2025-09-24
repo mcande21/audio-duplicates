@@ -10,7 +10,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - Windows prebuild support
 - Additional audio format support
-- Performance optimizations for large collections
+
+## [1.0.5] - 2024-09-24
+
+### Added
+- **OpenMP Parallelization**: Replaced custom thread pool with OpenMP for better performance and simpler code
+- **Async File Discovery**: Parallel directory traversal using async/await with p-limit concurrency control
+- **Configurable File Extensions**: New `--extensions` CLI flag to specify file types to scan (e.g., `--extensions wav,mp3,flac`)
+- **Real-time Discovery Progress**: Live updates during file discovery showing files scanned and audio files found
+- **macOS OpenMP Support**: Proper libomp library integration for Apple Silicon and Intel Macs
+
+### Changed
+- **Default Behavior**: Now scans only .wav files by default for faster performance (configurable with `--extensions`)
+- **Progress Reporting**: Three-phase progress system (discovery → processing → duplicate detection)
+- **Performance**: Significant improvements for large directories (500GB+) with parallel discovery
+
+### Fixed
+- **Memory Management**: Better resource handling with OpenMP automatic parallelization
+- **Progress Bar Accuracy**: Shows correct file counts and real-time updates
+- **Build System**: Improved binding.gyp configuration for cross-platform OpenMP support
+
+### Technical
+- Added p-limit dependency for concurrency control
+- Upgraded to OpenMP-based parallel processing
+- Enhanced error handling for malformed audio files
+- Better filesystem handling for large directory structures
 
 ## [1.0.0] - 2024-09-23
 
