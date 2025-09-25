@@ -12,7 +12,10 @@
         "src/fingerprint_comparator.cpp",
         "src/fingerprint_index.cpp",
         "src/audio_loader.cpp",
-        "src/audio_preprocessor.cpp"
+        "src/audio_preprocessor.cpp",
+        "src/compressed_fingerprint.cpp",
+        "src/audio_memory_pool.cpp",
+        "src/streaming_audio_loader.cpp"
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")"
@@ -22,7 +25,9 @@
       ],
       "libraries": [
         "-lchromaprint",
-        "-lsndfile"
+        "-lsndfile",
+        "-lmimalloc",
+        "-llz4"
       ],
       "conditions": [
         ["OS=='win'", {
@@ -57,7 +62,9 @@
               "-L/opt/homebrew/lib",
               "-L/usr/local/lib",
               "-L/opt/homebrew/opt/libomp/lib",
-              "-lomp"
+              "-lomp",
+              "-lmimalloc",
+              "-llz4"
             ]
           }
         }],
