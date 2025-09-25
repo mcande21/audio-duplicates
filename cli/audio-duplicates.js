@@ -6,6 +6,7 @@ const fs = require('fs');
 const chalk = require('chalk');
 const cliProgress = require('cli-progress');
 const audioDuplicates = require('../lib/index');
+const MemoryMonitor = require('../lib/memory_monitor');
 
 const program = new Command();
 
@@ -31,6 +32,8 @@ program
   .option('--no-progress', 'disable progress bar')
   .option('--parallel', 'use parallel processing for faster scanning')
   .option('--extensions <extensions>', 'file extensions to scan (comma-separated, default: wav)', 'wav')
+  .option('--memory-limit <mb>', 'memory limit in MB (default: 256)', parseInt, 256)
+  .option('--memory-stats', 'show detailed memory statistics during processing')
   .action(async (directories, options) => {
     try {
       await scanCommand(directories, options);
@@ -117,6 +120,22 @@ async function scanCommand(directories, options) {
     .map(ext => ext.trim().startsWith('.') ? ext.trim() : '.' + ext.trim());
 
   console.log(chalk.gray(`Extensions: ${extensions.join(', ')}`));
+
+  // Initialize memory monitoring
+  let memoryMonitor = null;
+  if (options.memoryStats || options.memoryLimit) {
+    memoryMonitor = new MemoryMonitor({
+      memoryLimitMB: options.memoryLimit || 256,
+      enabled: true
+    });
+
+    memoryMonitor.start();
+
+    // Set up memory warning callback
+    memoryMonitor.onMemoryWarning((totalMB, ratio) => {
+      console.log(chalk.yellow(`⚠️  Memory warning: ${totalMB.toFixed(1)}MB (${(ratio * 100).toFixed(1)}%)`));
+    });
+  }
 
   const scanOptions = {
     threshold: globalOpts.threshold,
@@ -223,6 +242,42 @@ async function scanCommand(directories, options) {
   console.log(`  Total duplicate files: ${totalDuplicates}`);
   console.log(`  Duplicate groups: ${duplicateGroups.length}`);
   console.log(`  Potential space savings: ${potentialSavings} files`);
+
+  // Display memory statistics if monitoring was enabled
+  if (memoryMonitor) {
+    try {
+      // Get native memory pool stats
+      const poolStats = await audioDuplicates.getMemoryPoolStats();
+      const streamingStats = await audioDuplicates.getStreamingStats();
+      const jsStats = memoryMonitor.getStats();
+
+      console.log();
+      console.log(chalk.blue('🧠 Memory Statistics:'));
+      console.log(`  Peak Node.js memory: ${jsStats.peaks.heapUsedMB.toFixed(1)}MB heap + ${jsStats.peaks.externalMB.toFixed(1)}MB external`);
+      console.log(`  Native memory pool: ${(poolStats.peakUsage / 1024 / 1024).toFixed(1)}MB peak usage`);
+      console.log(`  Total allocated: ${(poolStats.totalAllocated / 1024 / 1024).toFixed(1)}MB`);
+      if (jsStats.actions.gcForced > 0) {
+        console.log(`  Garbage collections forced: ${jsStats.actions.gcForced}`);
+      }
+      if (jsStats.actions.memoryWarnings > 0) {
+        console.log(chalk.yellow(`  Memory warnings: ${jsStats.actions.memoryWarnings}`));
+      }
+    } catch (error) {
+      console.log(chalk.yellow('  Memory stats unavailable:', error.message));
+    }
+
+    memoryMonitor.stop();
+
+    // Clear memory pool
+    try {
+      await audioDuplicates.clearMemoryPool();
+      if (options.memoryStats) {
+        console.log(chalk.gray('  Memory pool cleared'));
+      }
+    } catch (error) {
+      // Ignore cleanup errors
+    }
+  }
 }
 
 async function compareCommand(file1, file2, options) {
