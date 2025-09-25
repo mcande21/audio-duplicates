@@ -1,6 +1,6 @@
 {
   "name": "audio-duplicates",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Fast audio duplicate detection using Chromaprint fingerprinting",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
