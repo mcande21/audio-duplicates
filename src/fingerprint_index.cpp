@@ -13,20 +13,21 @@ FingerprintIndex::FingerprintIndex()
 FingerprintIndex::~FingerprintIndex() {
 }
 
-size_t FingerprintIndex::add_file(const std::string& file_path, std::unique_ptr<Fingerprint> fingerprint) {
-    if (!fingerprint || fingerprint->data.empty()) {
-        throw std::invalid_argument("Invalid fingerprint provided");
+size_t FingerprintIndex::add_file(const std::string& file_path, std::unique_ptr<CompressedFingerprint> compressed_fingerprint) {
+    if (!compressed_fingerprint || !compressed_fingerprint->isValid()) {
+        throw std::invalid_argument("Invalid compressed fingerprint provided");
     }
 
     std::unique_lock<std::mutex> files_lock(files_mutex_);
     std::unique_lock<std::shared_mutex> index_lock(index_mutex_);
 
-    // Create file entry
-    auto file_entry = std::make_unique<FileEntry>(file_path, std::move(fingerprint));
+    // Create file entry with compressed fingerprint
+    auto file_entry = std::make_unique<FileEntry>(file_path, std::move(compressed_fingerprint));
     size_t file_id = files_.size();
 
-    // Build hash index for this file
-    build_hash_index(file_id, *file_entry->fingerprint);
+    // Decompress temporarily for hash index building
+    auto temp_fingerprint = file_entry->compressed_fingerprint->decompress();
+    build_hash_index(file_id, *temp_fingerprint);
 
     // Store file entry
     files_.push_back(std::move(file_entry));
@@ -34,7 +35,7 @@ size_t FingerprintIndex::add_file(const std::string& file_path, std::unique_ptr<
     return file_id;
 }
 
-std::vector<size_t> FingerprintIndex::add_files_batch(std::vector<std::pair<std::string, std::unique_ptr<Fingerprint>>>& files) {
+std::vector<size_t> FingerprintIndex::add_files_batch(std::vector<std::pair<std::string, std::unique_ptr<CompressedFingerprint>>>& files) {
     std::vector<size_t> file_ids;
     file_ids.reserve(files.size());
 
@@ -42,16 +43,17 @@ std::vector<size_t> FingerprintIndex::add_files_batch(std::vector<std::pair<std:
     std::unique_lock<std::shared_mutex> index_lock(index_mutex_);
 
     for (auto& file_data : files) {
-        if (!file_data.second || file_data.second->data.empty()) {
-            throw std::invalid_argument("Invalid fingerprint provided");
+        if (!file_data.second || !file_data.second->isValid()) {
+            throw std::invalid_argument("Invalid compressed fingerprint provided");
         }
 
         // Create file entry
         auto file_entry = std::make_unique<FileEntry>(file_data.first, std::move(file_data.second));
         size_t file_id = files_.size();
 
-        // Build hash index for this file
-        build_hash_index(file_id, *file_entry->fingerprint);
+        // Decompress temporarily for hash index building
+        auto temp_fingerprint = file_entry->compressed_fingerprint->decompress();
+        build_hash_index(file_id, *temp_fingerprint);
 
         // Store file entry
         files_.push_back(std::move(file_entry));
@@ -70,11 +72,13 @@ std::vector<size_t> FingerprintIndex::find_candidates(size_t file_id) const {
     }
 
     const auto& file_entry = files_[file_id];
-    if (!file_entry || !file_entry->fingerprint) {
+    if (!file_entry || !file_entry->compressed_fingerprint) {
         return {};
     }
 
-    return find_candidates(*file_entry->fingerprint);
+    // Decompress temporarily for candidate finding
+    auto temp_fingerprint = file_entry->compressed_fingerprint->decompress();
+    return find_candidates(*temp_fingerprint);
 }
 
 std::vector<size_t> FingerprintIndex::find_candidates(const Fingerprint& fingerprint) const {
@@ -206,8 +210,9 @@ std::vector<size_t> FingerprintIndex::filter_candidates(const std::vector<size_t
 
     for (size_t candidate_id : candidates) {
         if (candidate_id < files_.size() && files_[candidate_id]) {
-            // Use quick filter from comparator
-            if (comparator_->quick_filter(query_fingerprint, *files_[candidate_id]->fingerprint)) {
+            // Use quick filter from comparator (decompress temporarily)
+            auto temp_candidate_fp = files_[candidate_id]->compressed_fingerprint->decompress();
+            if (comparator_->quick_filter(query_fingerprint, *temp_candidate_fp)) {
                 filtered.push_back(candidate_id);
             }
         }
@@ -223,7 +228,8 @@ void FingerprintIndex::find_duplicates_for_file(size_t file_id,
         return;
     }
 
-    const auto& query_fingerprint = *files_[file_id]->fingerprint;
+    auto temp_fingerprint = files_[file_id]->compressed_fingerprint->decompress();
+    const auto& query_fingerprint = *temp_fingerprint;
     auto candidates = find_candidates(query_fingerprint);
 
     std::unordered_set<size_t> duplicate_group;
@@ -232,7 +238,8 @@ void FingerprintIndex::find_duplicates_for_file(size_t file_id,
     // Compare with each candidate
     for (size_t candidate_id : candidates) {
         if (candidate_id != file_id && !processed[candidate_id] && files_[candidate_id]) {
-            auto match_result = comparator_->compare(query_fingerprint, *files_[candidate_id]->fingerprint);
+            auto candidate_fingerprint = files_[candidate_id]->compressed_fingerprint->decompress();
+            auto match_result = comparator_->compare(query_fingerprint, *candidate_fingerprint);
 
             if (match_result.is_duplicate) {
                 duplicate_group.insert(candidate_id);
@@ -275,8 +282,9 @@ std::vector<DuplicateGroup> FingerprintIndex::merge_duplicate_groups(const std::
 
                     if (id1 < files_.size() && id2 < files_.size() &&
                         files_[id1] && files_[id2]) {
-                        auto result = comparator_->compare(*files_[id1]->fingerprint,
-                                                         *files_[id2]->fingerprint);
+                        auto fp1 = files_[id1]->compressed_fingerprint->decompress();
+                        auto fp2 = files_[id2]->compressed_fingerprint->decompress();
+                        auto result = comparator_->compare(*fp1, *fp2);
                         total_similarity += result.similarity_score;
                         comparison_count++;
                     }
@@ -330,7 +338,8 @@ std::vector<DuplicateGroup> FingerprintIndex::find_all_duplicates_parallel(size_
 
             if (skip) continue;
 
-            const auto& query_fingerprint = *files_[file_id]->fingerprint;
+            auto temp_fingerprint = files_[file_id]->compressed_fingerprint->decompress();
+            const auto& query_fingerprint = *temp_fingerprint;
             auto candidates = find_candidates(query_fingerprint);
 
             std::unordered_set<size_t> duplicate_group;
@@ -346,7 +355,8 @@ std::vector<DuplicateGroup> FingerprintIndex::find_all_duplicates_parallel(size_
                     }
 
                     if (!candidate_processed) {
-                        auto match_result = comparator_->compare(query_fingerprint, *files_[candidate_id]->fingerprint);
+                        auto candidate_fingerprint = files_[candidate_id]->compressed_fingerprint->decompress();
+                        auto match_result = comparator_->compare(query_fingerprint, *candidate_fingerprint);
 
                         if (match_result.is_duplicate) {
                             duplicate_group.insert(candidate_id);

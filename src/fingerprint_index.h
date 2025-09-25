@@ -10,6 +10,7 @@
 #include <omp.h>
 #include "chromaprint_wrapper.h"
 #include "fingerprint_comparator.h"
+#include "compressed_fingerprint.h"
 
 namespace AudioDuplicates {
 
@@ -22,10 +23,10 @@ struct IndexEntry {
 
 struct FileEntry {
     std::string file_path;
-    std::unique_ptr<Fingerprint> fingerprint;
+    std::unique_ptr<CompressedFingerprint> compressed_fingerprint;
 
-    FileEntry(const std::string& path, std::unique_ptr<Fingerprint> fp)
-        : file_path(path), fingerprint(std::move(fp)) {}
+    FileEntry(const std::string& path, std::unique_ptr<CompressedFingerprint> cfp)
+        : file_path(path), compressed_fingerprint(std::move(cfp)) {}
 };
 
 struct DuplicateGroup {
@@ -41,10 +42,10 @@ public:
     ~FingerprintIndex();
 
     // Add a file and its fingerprint to the index
-    size_t add_file(const std::string& file_path, std::unique_ptr<Fingerprint> fingerprint);
+    size_t add_file(const std::string& file_path, std::unique_ptr<CompressedFingerprint> compressed_fingerprint);
 
     // Add multiple files in parallel (thread-safe)
-    std::vector<size_t> add_files_batch(std::vector<std::pair<std::string, std::unique_ptr<Fingerprint>>>& files);
+    std::vector<size_t> add_files_batch(std::vector<std::pair<std::string, std::unique_ptr<CompressedFingerprint>>>& files);
 
     // Find potential duplicates for a given file ID
     std::vector<size_t> find_candidates(size_t file_id) const;
