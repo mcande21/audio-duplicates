@@ -162,7 +162,7 @@ void FingerprintComparator::set_minimum_overlap(size_t min_overlap) {
 }
 
 void FingerprintComparator::set_max_alignment_offset(int max_offset) {
-    max_alignment_offset_ = std::max(0, max_offset);
+    max_alignment_offset_ = std::max(0, std::min(max_offset, 1000000));
 }
 
 void FingerprintComparator::set_alignment_step(int step) {
